@@ -26,8 +26,8 @@
 <!--    </Class>-->
 <!--    <Class name="TEST2" isRoot="false" documentation="Test equipment">-->
 <!--    </Class>-->
-<!--    <Class name="TEST3" isRoot="false" documentation="Test equipment">-->
-<!--    </Class>-->
+    <Class name="TEST3" isRoot="false" documentation="Test equipment">
+    </Class>
     <Class name="TEST4" isRoot="false" documentation="Test equipment">
         <Attribute name="hwRevision" type="string" />
         <Attribute name="id" type="uint32" />
@@ -42,6 +42,6 @@
     <Aggregation source="RU" target="HWE" sourceMultiplicity="0..42" targetMultiplicity="1" />
 <!--    <Aggregation source="TEST" target="RU" sourceMultiplicity="0..42" targetMultiplicity="1" />-->
 <!--    <Aggregation source="TEST2" target="TEST" sourceMultiplicity="0..42" targetMultiplicity="1" />-->
-<!--    <Aggregation source="TEST3" target="TEST2" sourceMultiplicity="0..42" targetMultiplicity="1" />-->
+    <Aggregation source="TEST3" target="TEST4" sourceMultiplicity="0..42" targetMultiplicity="1" />
     <Aggregation source="TEST4" target="RU" sourceMultiplicity="0..42" targetMultiplicity="1" />
 </XMI>
