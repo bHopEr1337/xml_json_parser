@@ -80,14 +80,13 @@ def search_root(root):
     Функция возвращает значение имени тега.
     Данное имя станет тегом будущего корня.
     :param root: xml element корневой элемент.
-    :return : String имя корневого тега.
+    :return classElement.attrib['name']: string имя корневого тега.
     """
     for classElement in root.findall('Class'):
         if classElement.get('isRoot') == 'true':
             return classElement.attrib['name']
 
 root_elem = search_root(root)
-
 
 """ 
 Создание нового XML корневого элемента для будущего output.xml
@@ -163,18 +162,21 @@ with open("output.xml", "w") as file:
     file.write(pretty_xml_as_string)
 
 # ------------------------- JSON ---------------------------------
+""" Массив, хранящий XML объекты Class """
 origin_elements2 = []
-elements_by_connection = {}
 
 for item in root:
     if item.tag == "Class":
         origin_elements2.append(item)
 
-for item in origin_elements2:
-    elements_by_connection[item] = {}
-
 
 def search_class_by_aggregation(source, target):
+    """
+    Поиск XML объектов источника и назначения по тэгам.
+    :param source: string источник в объекте связей.
+    :param target: string назначение в объекте связей.
+    :return (result_source, result_target): tuple(XML объекты источника и назначения)
+    """
     result_source = None
     result_target = None
     for origin_element in origin_elements2:
@@ -186,79 +188,105 @@ def search_class_by_aggregation(source, target):
         return (result_source, result_target)
 
 
-""" ?Заполнение словаря? """
-for item in root:
-    if item.tag == "Aggregation":
-        source = item.attrib['source']
-        target = item.attrib['target']
-        objects = search_class_by_aggregation(source, target)
-        elements_by_connection[objects[1]][objects[0].attrib['name']] = objects[0]
+"""
+Словарь XML объектов. Значением яляется другой словарь с дочерними XML объектами
+elements_by_connection = {XML1: {'tag2': XML2, 'tag3': XML3}}
+XML1 является родителем для XML2 и XML3.
+"""
+elements_by_connection = {}
+for item in origin_elements2:
+    elements_by_connection[item] = {}
 
-element = origin_elements2[0]
+""" Заполнение словаря связей"""
+for item in root.findall(".//Aggregation"):
+    source = item.attrib['source']
+    target = item.attrib['target']
+    objects = search_class_by_aggregation(source, target)
+    elements_by_connection[objects[1]][objects[0].attrib['name']] = objects[0]
 
-""" Нужно создать словарь, у которого ключом будет название, а значением объект Aggregation """
+# element = origin_elements2[0]
+
+""" 
+Заполнение словаря, у которого ключом будет название, а значением xml объект Aggregation.
+elements_with_aggregation = {key = elements_with_aggregation[key].attrib['source']}
+Ключ - это строковое значение source в XML объекте Aggregarion.
+"""
 elements_with_aggregation = {}
-for elem in root.findall("Aggregation"):
-    for origin_element in origin_elements:
-        if origin_element == elem.attrib['source']:
-            elements_with_aggregation[origin_element] = elem
+for xml_element_aggregation in root.findall("Aggregation"):
+    for tag_of_xml_class_object in origin_elements:
+        if tag_of_xml_class_object == xml_element_aggregation.attrib['source']:
+            elements_with_aggregation[tag_of_xml_class_object] = xml_element_aggregation
 
 
-def xml_to_dict(original_object):
-    element_key = original_object
+def xml_to_dict(xml_object_class):
+    """
+    Функция получает на вход XML объект Class и преобразует его в формат json. Возвращает полностью готовый объект json объект класса.
+    :param xml_object_class: XML объект Class.
+    :return result: dict словарь, содержащий xml объект в json формате. Всё реализовано через словари и массивы.
+    """
+
+    # Словарь для xml объекта, преобразованного в json формат
     result = {}
 
-    """ Добавление атрибута "class" : "название класса" """
-    result[element_key.tag.lower()] = element_key.attrib['name']
-    for i in element_key.attrib:
-        if i != 'name':
-            if i == "isRoot":
-                if element_key.attrib[i] == 'true':
-                    result[i] = True
-                else:
-                    result[i] = False
-            else:
-                result[i] = element_key.attrib[i]
+    # Добавление атрибута {'class': 'xml_class_name'}
+    result['class'] = xml_object_class.attrib['name']
 
-    if original_object.attrib['name'] != root_elem:
-        number = elements_with_aggregation[original_object.attrib['name']].attrib['sourceMultiplicity']
+    # Добавление атрибутов {'name': 'value', 'name2': 'value'}
+    for name_of_attribute in xml_object_class.attrib:
+        # если удалить атрибут name, то можно избавиться от if, надо подумать.
+        if name_of_attribute != 'name':
+            if name_of_attribute == "isRoot":
+                if xml_object_class.attrib[name_of_attribute] == 'true':
+                    result[name_of_attribute] = True
+                else:
+                    result[name_of_attribute] = False
+            else:
+                result[name_of_attribute] = xml_object_class.attrib[name_of_attribute]
+
+    # Добавление атрибутов мощности из отношения XML Aggregation {'max': 'int', 'min': 'int'}
+    if xml_object_class.attrib['name'] != root_elem:
+        number = elements_with_aggregation[xml_object_class.attrib['name']].attrib['sourceMultiplicity']
         number = number.split("..")
         result['max'] = number[-1]
         result['min'] = number[0]
 
+    # Массив для словарей, которые будут хранить либо дочерние элементы,
+    # либо вложенные объекты XML Attribute.
+    # result['parameters'] = [Дочерние классы {'name': 'BTS', 'type': 'class'}, Вложенные объекты Attribute{'name': 'id', 'type': 'unit32'}]
     result['parameters'] = [{}]
 
-    """ Добавление вложенных классов в параметры "parameters": [{}] """
-    i = 0
-    for key, value in elements_by_connection[element_key].items():
-        if i > 0:
+    """ Добавление вложенных классов в параметры "parameters": [{'name': 'BTS', 'type': 'class'}, ...] """
+    index_of_dict_in_array = 0
+    for tag_of_child_xml, child_xml in elements_by_connection[xml_object_class].items():
+        if index_of_dict_in_array > 0:
             result['parameters'].append({})
-        result['parameters'][i]['name'] = value.attrib['name']
-        result['parameters'][i]['type'] = value.tag.lower()
-        i += 1
+        result['parameters'][index_of_dict_in_array]['name'] = child_xml.attrib['name']
+        result['parameters'][index_of_dict_in_array]['type'] = child_xml.tag.lower()
+        index_of_dict_in_array += 1
 
-    """ Добавление вложенных атрибутов <Attribute> """
-    if element_key.attrib['name'] in elements_with_attribute:
-
-        for item in elements_with_attribute[element_key.attrib['name']]:
+    """ Добавление вложенных атрибутов <Attribute> в параметры "parameters": [{'name': 'id', 'type': 'unit32'}, ...]"""
+    if xml_object_class.attrib['name'] in elements_with_attribute:
+        for item in elements_with_attribute[xml_object_class.attrib['name']]:
             result['parameters'].append({})
-            result['parameters'][i]['name'] = item
-            result['parameters'][i]['type'] = elements_with_attribute[element_key.attrib['name']][item]
-            i += 1
+            result['parameters'][index_of_dict_in_array]['name'] = item
+            result['parameters'][index_of_dict_in_array]['type'] = elements_with_attribute[xml_object_class.attrib['name']][item]
+            index_of_dict_in_array += 1
 
+    # В массиве result['parameters'] = [{}] может быть пустой словарь. Этот массив удаляется.
     if len(result['parameters'][-1]) == 0:
         result['parameters'].pop()
 
     return result
 
 
-result_array = []
-for elem in origin_elements2:
-    xml_dict = xml_to_dict(elem)
-    result_array.append(xml_dict)
+root_json_array = []
+for xml_class_object in origin_elements2:
+    json_object_from_xml = xml_to_dict(xml_class_object)
+    root_json_array.append(json_object_from_xml)
 
-json_data = json.dumps(result_array, ensure_ascii=False, indent=4)
+json_data = json.dumps(root_json_array, ensure_ascii=False, indent=4)
+print(json_data)
+
 with open("output.json", "w", encoding="utf-8") as json_file:
     json_file.write(json_data)
 
-print(json_data)
