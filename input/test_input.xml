@@ -22,16 +22,10 @@
     </Class>
     <Class name="HWE" isRoot="false" documentation="Hardware equipment">
     </Class>
-<!--    <Class name="TEST" isRoot="false" documentation="Test equipment">-->
-<!--    </Class>-->
-<!--    <Class name="TEST2" isRoot="false" documentation="Test equipment">-->
-<!--    </Class>-->
     <Aggregation source="MGMT" target="BTS" sourceMultiplicity="1" targetMultiplicity="1" />
     <Aggregation source="HWE" target="BTS" sourceMultiplicity="1" targetMultiplicity="1" />
     <Aggregation source="COMM" target="BTS" sourceMultiplicity="1" targetMultiplicity="1" />
     <Aggregation source="MetricJob" target="MGMT" sourceMultiplicity="0..100" targetMultiplicity="1" />
     <Aggregation source="CPLANE" target="MGMT" sourceMultiplicity="0..1" targetMultiplicity="1" />
     <Aggregation source="RU" target="HWE" sourceMultiplicity="0..42" targetMultiplicity="1" />
-<!--    <Aggregation source="TEST" target="RU" sourceMultiplicity="0..42" targetMultiplicity="1" />-->
-<!--    <Aggregation source="TEST2" target="TEST" sourceMultiplicity="0..42" targetMultiplicity="1" />-->
 </XMI>
