@@ -4,6 +4,103 @@ from xml.etree.ElementTree import Element
 from typing import Dict, List
 from xml.dom import minidom
 import json
+import os
+
+
+def validate_and_check_tags(input_file_name):
+    try:
+        # Проверка на наличие файла.
+        full_path = os.path.join('./input', input_file_name)
+        if not os.path.isfile(full_path):
+            raise FileNotFoundError(f"Файл '{full_path}' не найден.")
+
+        tree = ET.parse(full_path)
+        root = tree.getroot()
+
+        # Проверка на наличие объектов Class.
+        classes = root.findall(".//Class")
+        if not classes:
+            raise ValueError("Отсутствуют элементы Class.")
+
+        # Проверка на наличие одного корневого элемента Class с атрибутом isRoot='true'
+        root_classes = root.findall(".//Class[@isRoot='true']")
+        if len(root_classes) != 1:
+            raise ValueError("Должен быть ровно один корневой класс с атрибутом isRoot='true'.")
+
+        names = set()  # Для отслеживания уникальных имен
+
+        # Проверка атрибутов Class
+        for xml_class in classes:
+            if 'isRoot' not in xml_class.attrib:
+                raise ValueError("Отсутствует атрибут 'isRoot' в элементе Class.")
+            # Проверка на уникальность имен
+            name = xml_class.attrib.get('name')
+            if not name:
+                raise ValueError("Отсутствует атрибут 'name' в элементе Class.")
+            if name in names:
+                raise ValueError(f"Атрибут 'name' должен быть уникальным. Дублируется имя: {name}.")
+            names.add(name)
+
+        # Проверка атрибутов Attribute
+        for attribute in root.findall(".//Attribute"):
+            if 'name' not in attribute.attrib:
+                raise ValueError(
+                    f"Отсутствует атрибут 'name' в элементе Attribute: {ET.tostring(attribute, encoding='unicode')}.")
+            if 'type' not in attribute.attrib:
+                raise ValueError(
+                    f"Отсутствует атрибут 'type' в элементе Attribute: {ET.tostring(attribute, encoding='unicode')}.")
+
+        # Проверка атрибутов Aggregation
+        aggregations = root.findall(".//Aggregation")
+        for aggregation in aggregations:
+            if 'sourceMultiplicity' not in aggregation.attrib:
+                raise ValueError("Отсутствует атрибут 'sourceMultiplicity' в элементе Aggregation.")
+            if 'source' not in aggregation.attrib:
+                raise ValueError("Отсутствует атрибут 'source' в элементе Aggregation.")
+            if 'target' not in aggregation.attrib:
+                raise ValueError("Отсутствует атрибут 'target' в элементе Aggregation.")
+
+            source = aggregation.attrib['source']
+            target = aggregation.attrib['target']
+
+            if source == target:
+                raise ValueError("Атрибут 'source' равен атрибуту 'target' в элементе Aggregation. Связь не имеет смысла.")
+
+            # Проверка на циклы
+            check_for_cycles(source, target, aggregations)
+
+        print("Все теги в XML файле корректно закрыты и проверки пройдены.")
+
+    except ET.ParseError as e:
+        print(f"Ошибка парсинга: {e}")
+    except FileNotFoundError:
+        print("Файл не найден.")
+    except ValueError as e:
+        print(f"Ошибка валидации: {e}")
+        raise  # Останавливает выполнение после вывода ошибки
+    except Exception as e:
+        print(f"Произошла ошибка: {e}")
+
+def check_for_cycles(source, target, aggregations):
+    visited = set()
+
+    def dfs(current_class):
+        if current_class in visited:
+            print(f"Обнаружен цикл при проверке связи: {source} -> {current_class} -> {target}")
+            return True
+        visited.add(current_class)
+
+        # Ищем все агрегации для текущего класса
+        for agg in aggregations:
+            if agg.attrib['source'] == current_class:
+                if dfs(agg.attrib['target']):
+                    return True
+
+        visited.remove(current_class)
+        return False
+
+    # Запускаем DFS от источника
+    dfs(source)
 
 
 class XMLParser:
@@ -30,8 +127,17 @@ class XMLParser:
 
     def __init__(self, input_file_name: str):
         self.__input_file_name = input_file_name
+
+        # validate(self.__input_file_name)
+        validate_and_check_tags(self.__input_file_name)
+
         self.__tree = ET.parse(f'./input/{self.__input_file_name}')
         self.__root = self.__tree.getroot()
+
+
+
+
+
 
     def __add_child_to_parent_xml(self) -> Dict[str, Element]:
         """Создание новых xml объектов Class на основе существующих и
@@ -196,6 +302,9 @@ class JSONParser:
 
     def __init__(self, input_file):
         self.__input_file = input_file
+
+        validate_and_check_tags(self.__input_file)
+
         self.__tree = ET.parse(f'./input/{self.__input_file}')
         self.__root = self.__tree.getroot()
 
