@@ -1,109 +1,184 @@
 import xml.etree.ElementTree as ET
 from xml.etree.ElementTree import Element
+from xml.dom import minidom
 
 from typing import Dict, List
-from xml.dom import minidom
 import json
 import os
 
 
-def validate_and_check_tags(input_file_name):
-    try:
-        # Проверка на наличие файла.
-        full_path = os.path.join('./input', input_file_name)
-        if not os.path.isfile(full_path):
-            raise FileNotFoundError(f"Файл '{full_path}' не найден.")
+class XMLValidator:
+    """Класс XMLValidator используется для проверки исходного файла.
 
-        tree = ET.parse(full_path)
-        root = tree.getroot()
+    Метод validate_and_check_tags() отвечает за проверку файла.
+    """
 
-        # Проверка на наличие объектов Class.
-        classes = root.findall(".//Class")
-        if not classes:
-            raise ValueError("Отсутствуют элементы Class.")
+    def validate_and_check_tags(self, input_file_name):
+        """Проверяет валидность и целостность тегов в XML файле.
 
-        # Проверка на наличие одного корневого элемента Class с атрибутом isRoot='true'
-        root_classes = root.findall(".//Class[@isRoot='true']")
-        if len(root_classes) != 1:
-            raise ValueError("Должен быть ровно один корневой класс с атрибутом isRoot='true'.")
+        Метод выполняет следующие проверки:
 
-        names = set()  # Для отслеживания уникальных имен
+        1. **Наличие файла**:
+            - Проверяет, существует ли файл по указанному имени.
+            - Если файл не найден, бросает исключение `FileNotFoundError`.
 
-        # Проверка атрибутов Class
-        for xml_class in classes:
-            if 'isRoot' not in xml_class.attrib:
-                raise ValueError("Отсутствует атрибут 'isRoot' в элементе Class.")
-            # Проверка на уникальность имен
-            name = xml_class.attrib.get('name')
-            if not name:
-                raise ValueError("Отсутствует атрибут 'name' в элементе Class.")
-            if name in names:
-                raise ValueError(f"Атрибут 'name' должен быть уникальным. Дублируется имя: {name}.")
-            names.add(name)
+        2. **Парсинг XML**:
+            - Загружает XML файл и проверяет его на корректность.
+            - Если синтаксис неверен, выбрасывает исключение `xml.etree.ElementTree.ParseError` с описанием проблемы.
 
-        # Проверка атрибутов Attribute
-        for attribute in root.findall(".//Attribute"):
-            if 'name' not in attribute.attrib:
-                raise ValueError(
-                    f"Отсутствует атрибут 'name' в элементе Attribute: {ET.tostring(attribute, encoding='unicode')}.")
-            if 'type' not in attribute.attrib:
-                raise ValueError(
-                    f"Отсутствует атрибут 'type' в элементе Attribute: {ET.tostring(attribute, encoding='unicode')}.")
+        3. **Проверка классов**:
+            - Убедится, что в файле есть хотя бы один элемент `<Class>`.
+            - Если отсутствуют, бросает `ValueError` с сообщением об ошибке.
 
-        # Проверка атрибутов Aggregation
-        aggregations = root.findall(".//Aggregation")
-        for aggregation in aggregations:
-            if 'sourceMultiplicity' not in aggregation.attrib:
-                raise ValueError("Отсутствует атрибут 'sourceMultiplicity' в элементе Aggregation.")
-            if 'source' not in aggregation.attrib:
-                raise ValueError("Отсутствует атрибут 'source' в элементе Aggregation.")
-            if 'target' not in aggregation.attrib:
-                raise ValueError("Отсутствует атрибут 'target' в элементе Aggregation.")
+        4. **Корневой класс**:
+            - Проверяет, что есть ровно один корневой класс с атрибутом `isRoot='true'`.
+            - Если это условие нарушено, выбрасывает `ValueError`.
 
-            source = aggregation.attrib['source']
-            target = aggregation.attrib['target']
+        5. **Атрибуты классов**:
+            - Убедитесь, что каждый класс имеет атрибуты `isRoot` и `name`.
+            - Проверяет, что имена классов уникальны. Дублирование имён будет вызывать `ValueError`.
 
-            if source == target:
-                raise ValueError("Атрибут 'source' равен атрибуту 'target' в элементе Aggregation. Связь не имеет смысла.")
+        6. **Проверка атрибутов элементов Attribute**:
+            - Каждому объекту `<Attribute>` должны соответствовать атрибуты `name` и `type`.
+            - Метод также проверяет уникальность имён атрибутов внутри каждого класса.
 
-            # Проверка на циклы
-            check_for_cycles(source, target, aggregations)
+        7. **Проверка элементов Aggregation**:
+            - Проверяет наличие атрибутов `sourceMultiplicity`, `source`, и `target` у каждого элемента `<Aggregation>`.
+            - Убедитесь, что атрибуты `source` и `target` различны, иначе выбрасывает `ValueError`.
 
-        print("Все теги в XML файле корректно закрыты и проверки пройдены.")
+        8. **Проверка на циклы**:
+            - Проверяет наличие циклов в связи между элементами Aggregation. Если циклы обнаружены, метод вызывает
+            собственный метод для обработки этой ситуации.
 
-    except ET.ParseError as e:
-        print(f"Ошибка парсинга: {e}")
-    except FileNotFoundError:
-        print("Файл не найден.")
-    except ValueError as e:
-        print(f"Ошибка валидации: {e}")
-        raise  # Останавливает выполнение после вывода ошибки
-    except Exception as e:
-        print(f"Произошла ошибка: {e}")
+        Если все проверки пройдены без исключений, метод выводит сообщение о том, что все теги корректны.
 
-def check_for_cycles(source, target, aggregations):
-    visited = set()
+        Параметры:
+        ----------
+        input_file_name : str
+            Имя XML файла для валидации.
+        """
 
-    def dfs(current_class):
-        if current_class in visited:
-            print(f"Обнаружен цикл при проверке связи: {source} -> {current_class} -> {target}")
-            return True
-        visited.add(current_class)
+        try:
+            # Проверка на наличие файла.
+            full_path = os.path.join('./input', input_file_name)
+            if not os.path.isfile(full_path):
+                raise FileNotFoundError(f"Файл '{full_path}' не найден.")
 
-        # Ищем все агрегации для текущего класса
-        for agg in aggregations:
-            if agg.attrib['source'] == current_class:
-                if dfs(agg.attrib['target']):
-                    return True
+            tree = ET.parse(full_path)
+            root = tree.getroot()
 
-        visited.remove(current_class)
-        return False
+            # Проверка на наличие объектов Class.
+            classes = root.findall(".//Class")
+            if not classes:
+                raise ValueError("Отсутствуют элементы Class.")
 
-    # Запускаем DFS от источника
-    dfs(source)
+            # Проверка на наличие одного корневого элемента Class с атрибутом isRoot='true'
+            root_classes = root.findall(".//Class[@isRoot='true']")
+            if len(root_classes) != 1:
+                raise ValueError("Должен быть ровно один корневой класс с атрибутом isRoot='true'.")
+
+            names = set()  # Для отслеживания уникальных имен классов
+
+            # Проверка атрибутов Class
+            for xml_class in classes:
+                if 'isRoot' not in xml_class.attrib:
+                    raise ValueError("Отсутствует атрибут 'isRoot' в элементе Class.")
+
+                # Проверка на уникальность имен классов
+                name = xml_class.attrib.get('name')
+                if not name:
+                    raise ValueError("Отсутствует атрибут 'name' в элементе Class.")
+                if name in names:
+                    raise ValueError(f"Aтрибут 'name' должен быть уникальным. Дублируется имя: {name}.")
+                names.add(name)
+
+                # Проверка на наличие атрибутов Attribute и их уникальность
+                attribute_names = set()  # Для отслеживания уникальных имен атрибутов в текущем классе
+                for attribute in xml_class.findall("Attribute"):
+                    if 'name' not in attribute.attrib:
+                        raise ValueError(
+                            f"Отсутствует атрибут 'name' в элементе Attribute: {ET.tostring(attribute, encoding='unicode')}.")
+                    if 'type' not in attribute.attrib:
+                        raise ValueError(
+                            f"Отсутствует атрибут 'type' в элементе Attribute: {ET.tostring(attribute, encoding='unicode')}.")
+
+                    # Проверка на уникальность имени атрибута
+                    attribute_name = attribute.attrib['name']
+                    if attribute_name in attribute_names:
+                        raise ValueError(f"Атрибут 'name' в элементе Attribute должен быть уникальным. Дублируется имя: {attribute_name}.")
+                    attribute_names.add(attribute_name)
+
+            # Проверка атрибутов Aggregation
+            aggregations = root.findall(".//Aggregation")
+            for aggregation in aggregations:
+                if 'sourceMultiplicity' not in aggregation.attrib:
+                    raise ValueError("Отсутствует атрибут 'sourceMultiplicity' в элементе Aggregation.")
+                if 'source' not in aggregation.attrib:
+                    raise ValueError("Отсутствует атрибут 'source' в элементе Aggregation.")
+                if 'target' not in aggregation.attrib:
+                    raise ValueError("Отсутствует атрибут 'target' в элементе Aggregation.")
+
+                source = aggregation.attrib['source']
+                target = aggregation.attrib['target']
+
+                if source == target:
+                    raise ValueError("Атрибут 'source' равен атрибуту 'target' в элементе Aggregation. Связь не имеет смысла.")
+
+                # Проверка на циклы
+                self.__check_for_cycles(source, target, aggregations)
+            print("Все теги в XML файле корректно закрыты и проверки пройдены.")
+
+        except ET.ParseError as e:
+            print(f"Ошибка парсинга: {e}")
+        except FileNotFoundError:
+            print("Файл не найден.")
+        except ValueError as e:
+            print(f"Ошибка валидации: {e}")
+            raise  # Останавливает выполнение после вывода ошибки
+        except Exception as e:
+            print(f"Произошла ошибка: {e}")
+
+    def __check_for_cycles(self, source, target, aggregations):
+        """Проверяет наличие циклов в графе агрегаций между классами.
+
+        Этот метод использует алгоритм поиска в глубину (DFS), начиная с указанного
+        источника, чтобы определить, возможно ли достичь целевого класса
+        без циклических зависимостей. Если цикл обнаружен, выбрасывается исключение.
+
+        Параметры:
+        ----------
+        source : str
+            Класс, с которого начинается проверка.
+        target : str
+            Класс, к которому проверяется наличие связи.
+        aggregations : list
+            Список агрегаций, где каждая агрегация представляет связь между
+            классами в виде атрибутов 'source' и 'target'.
+
+        Исключения:
+        -----------
+        ValueError
+            Выбрасывается, если обнаружен цикл в структуре агрегаций между классами.
+        """
+        visited = set()
+
+        def __dfs(current_class):
+            if current_class in visited:
+                raise ValueError(f"Обнаружен цикл при проверке связи: {source} -> {current_class} -> {target}.")
+            visited.add(current_class)
+
+            # Ищем все агрегации для текущего класса
+            for agg in aggregations:
+                if agg.attrib['source'] == current_class:
+                    __dfs(agg.attrib['target'])
+
+            visited.remove(current_class)
+
+        # Запускаем DFS от источника
+        __dfs(source)
 
 
-class XMLParser:
+class XMLParser(XMLValidator):
     """Класс XMLParser используется для формирования xml файла с иерархией
 
     Основное применение - создание файла config.xml. Данный файл представляет собой пример внутренней
@@ -116,7 +191,7 @@ class XMLParser:
     Attributes
     ----------
     __input_file_name : str
-        название исходного файла. Например: 'test_input.xml'
+        название исходного файла. Например: 'impulse_test_input.xml'
 
     Methods
     -------
@@ -129,7 +204,7 @@ class XMLParser:
         self.__input_file_name = input_file_name
 
         # validate(self.__input_file_name)
-        validate_and_check_tags(self.__input_file_name)
+        super().validate_and_check_tags(self.__input_file_name)
 
         self.__tree = ET.parse(f'./input/{self.__input_file_name}')
         self.__root = self.__tree.getroot()
@@ -258,7 +333,7 @@ class XMLParser:
         xml_str = ET.tostring(root_xml_object, encoding='utf-8', xml_declaration=True)
         pretty_xml_as_string = minidom.parseString(xml_str).toprettyxml(indent="    ")
 
-        with open("output.xml", "w") as file:
+        with open("./out/config.xml", "w") as file:
             file.write(pretty_xml_as_string)
 
 
@@ -277,7 +352,7 @@ class XMLParser:
 # ------------------------- JSON ---------------------------------
 
 
-class JSONParser:
+class JSONParser(XMLValidator):
     """Класс JSONParser используется для формирования json файла
 
     Основное применение - создание файла meta.json. Данный файл содержит мета-информацию
@@ -291,7 +366,7 @@ class JSONParser:
     Attributes
     ----------
     __input_file_name : str
-        название исходного файла. Например: 'test_input.xml'
+        название исходного файла. Например: 'impulse_test_input.xml'
 
     Methods
     -------
@@ -303,7 +378,7 @@ class JSONParser:
     def __init__(self, input_file):
         self.__input_file = input_file
 
-        validate_and_check_tags(self.__input_file)
+        super().validate_and_check_tags(self.__input_file)
 
         self.__tree = ET.parse(f'./input/{self.__input_file}')
         self.__root = self.__tree.getroot()
@@ -474,7 +549,7 @@ class JSONParser:
 
         data = json.dumps(json_file, indent=4)
 
-        with open('output.json', 'w') as file:
+        with open('./out/meta.json', 'w') as file:
             file.write(data)
 
     def __start_json_parser(self):
@@ -491,8 +566,8 @@ class JSONParser:
 
 
 if __name__ == '__main__':
-    obj_xml = XMLParser('test_input.xml')
+    obj_xml = XMLParser('impulse_test_input.xml')
     obj_xml.main()
 
-    obj_json = JSONParser('test_input.xml')
+    obj_json = JSONParser('impulse_test_input.xml')
     obj_json.main()
